@@ -1,4 +1,3 @@
-
 const {
   default: makeWASocket,
   useMultiFileAuthState,
@@ -6,6 +5,17 @@ const {
 } = require("@whiskeysockets/baileys");
 
 const pino = require("pino");
+const http = require("http");
+
+const PORT = process.env.PORT || 10000;
+const PHONE_NUMBER = process.env.PHONE_NUMBER;
+
+http.createServer((req, res) => {
+  res.writeHead(200);
+  res.end("Matupa DML Bot is running!");
+}).listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
+});
 
 async function startBot() {
   const { state, saveCreds } = await useMultiFileAuthState("auth_info");
@@ -18,7 +28,23 @@ async function startBot() {
 
   sock.ev.on("creds.update", saveCreds);
 
+  if (!state.creds.registered && PHONE_NUMBER) {
+    setTimeout(async () => {
+      try {
+        const code = await sock.requestPairingCode(
+          PHONE_NUMBER.replace(/\D/g, "")
+        );
+
+        console.log("WHATSAPP PAIRING CODE:", code);
+      } catch (error) {
+        console.log("Pairing code error:", error.message);
+      }
+    }, 3000);
+  }
+
   sock.ev.on("connection.update", ({ connection, lastDisconnect }) => {
+    console.log("Connection:", connection);
+
     if (connection === "open") {
       console.log("Matupa DML Bot imeunganishwa WhatsApp! ✅");
     }
@@ -30,7 +56,7 @@ async function startBot() {
       console.log("Connection imefungwa.");
 
       if (shouldReconnect) {
-        startBot();
+        setTimeout(startBot, 3000);
       }
     }
   });
