@@ -10,6 +10,10 @@ const http = require("http");
 const PORT = process.env.PORT || 10000;
 const PHONE_NUMBER = process.env.PHONE_NUMBER;
 
+// ====================
+// SERVER
+// ====================
+
 http.createServer((req, res) => {
   res.writeHead(200);
   res.end("Matupa DML Bot is running!");
@@ -17,8 +21,25 @@ http.createServer((req, res) => {
   console.log(`Server running on port ${PORT}`);
 });
 
+// ====================
+// SETTINGS
+// ====================
+
+const settings = {
+  autoreply: false,
+  autoreact: false,
+  antilink: false,
+  antimentionstatus: false,
+  antibot: false
+};
+
+// ====================
+// START BOT
+// ====================
+
 async function startBot() {
-  const { state, saveCreds } = await useMultiFileAuthState("auth_info");
+  const { state, saveCreds } =
+    await useMultiFileAuthState("auth_info");
 
   const sock = makeWASocket({
     auth: state,
@@ -28,66 +49,121 @@ async function startBot() {
 
   sock.ev.on("creds.update", saveCreds);
 
+  // ====================
+  // PAIRING CODE
+  // ====================
+
   if (!state.creds.registered && PHONE_NUMBER) {
     setTimeout(async () => {
       try {
         const code = await sock.requestPairingCode(
           PHONE_NUMBER.replace(/\D/g, "")
         );
+
         console.log("WHATSAPP PAIRING CODE:", code);
       } catch (error) {
-        console.log("Pairing code error:", error.message);
+        console.log(
+          "Pairing code error:",
+          error.message
+        );
       }
     }, 3000);
   }
 
-  sock.ev.on("connection.update", ({ connection, lastDisconnect }) => {
-    console.log("Connection:", connection);
+  // ====================
+  // CONNECTION
+  // ====================
 
-    if (connection === "open") {
-      console.log("Matupa DML Bot imeunganishwa WhatsApp! ✅");
-    }
+  sock.ev.on(
+    "connection.update",
+    ({ connection, lastDisconnect }) => {
 
-    if (connection === "close") {
-      const shouldReconnect =
-        lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
+      console.log("Connection:", connection);
 
-      if (shouldReconnect) {
-        setTimeout(startBot, 3000);
+      if (connection === "open") {
+        console.log(
+          "Matupa DML Bot imeunganishwa WhatsApp! ✅"
+        );
+      }
+
+      if (connection === "close") {
+
+        const shouldReconnect =
+          lastDisconnect?.error?.output?.statusCode !==
+          DisconnectReason.loggedOut;
+
+        console.log("Connection imefungwa.");
+
+        if (shouldReconnect) {
+          setTimeout(startBot, 3000);
+        }
       }
     }
-  });
+  );
 
-  sock.ev.on("messages.upsert", async ({ messages }) => {
-    const msg = messages[0];
+  // ====================
+  // MESSAGES
+  // ====================
 
-    if (!msg?.message || msg.key.fromMe) return;
+  sock.ev.on(
+    "messages.upsert",
+    async ({ messages }) => {
 
-    const text =
-      msg.message.conversation ||
-      msg.message.extendedTextMessage?.text ||
-      "";
+      const msg = messages[0];
 
-    const command = text.trim().toLowerCase();
-    const jid = msg.key.remoteJid;
+      if (!msg?.message || msg.key.fromMe) {
+        return;
+      }
 
-    if (command === ".ping") {
-      await sock.sendMessage(jid, {
-        text: "🏓 Pong! Bot inafanya kazi."
-      });
-    }
+      const text =
+        msg.message.conversation ||
+        msg.message.extendedTextMessage?.text ||
+        "";
 
-    if (command === ".hi" || command === "hi") {
-      await sock.sendMessage(jid, {
-        text: "Habari 👋 Mimi ni Matupa DML Bot."
-      });
-    }
+      const command =
+        text.trim().toLowerCase();
 
-    if (command === ".menu") {
-      await sock.sendMessage(jid, {
-        text: `🤖 *MATUPA DML BOT*
+      const jid = msg.key.remoteJid;
 
-📋 COMMANDS
+      // ====================
+      // PING
+      // ====================
+
+      if (command === ".ping") {
+
+        await sock.sendMessage(jid, {
+          text: "🏓 Pong! Bot inafanya kazi."
+        });
+
+      }
+
+      // ====================
+      // HI
+      // ====================
+
+      if (
+        command === ".hi" ||
+        command === "hi"
+      ) {
+
+        await sock.sendMessage(jid, {
+          text:
+            "Habari 👋 Mimi ni Matupa DML Bot."
+        });
+
+      }
+
+      // ====================
+      // MENU
+      // ====================
+
+      if (command === ".menu") {
+
+        await sock.sendMessage(jid, {
+          text: `🤖 *MATUPA DML BOT*
+
+📋 *COMMANDS*
+
 • .ping
 • .hi
 • .menu
@@ -96,98 +172,363 @@ async function startBot() {
 • .owner
 • .getpp
 • .ph
-• .bass
-• .treble`
-      });
-    }
 
-    if (command === ".time") {
-      const time = new Date().toLocaleTimeString("sw-TZ");
-      await sock.sendMessage(jid, {
-        text: `🕒 Saa: ${time}`
-      });
-    }
+⚙️ *MODE*
+• .mode
+• .settings
 
-    if (command === ".date") {
-      const date = new Date().toLocaleDateString("sw-TZ");
-      await sock.sendMessage(jid, {
-        text: `📅 Tarehe: ${date}`
-      });
-    }
+🛡️ *SECURITY*
+• .antilink on/off
+• .antimentionstatus on/off
+• .antibot on/off
 
-    if (command === ".owner") {
-      await sock.sendMessage(jid, {
-        text: "👤 Owner: Matupa DML"
-      });
-    }
-
-    if (command === ".getpp") {
-      const target =
-        msg.message.extendedTextMessage?.contextInfo?.participant;
-
-      if (!target) {
-        await sock.sendMessage(jid, {
-          text: "Reply kwenye ujumbe wa mtu, kisha andika .getpp"
+🤖 *AUTO*
+• .autoreact on/off
+• .autoreply on/off`
         });
-      } else {
-        try {
-          const url = await sock.profilePictureUrl(target, "image");
+
+      }
+
+      // ====================
+      // MODE
+      // ====================
+
+      if (command === ".mode") {
+
+        await sock.sendMessage(jid, {
+          text: `⚙️ *MATUPA DML BOT MODE*
+
+🤖 AUTO REACT
+• .autoreact on
+• .autoreact off
+
+💬 AUTO REPLY
+• .autoreply on
+• .autoreply off
+
+🔗 ANTILINK
+• .antilink on
+• .antilink off
+
+📢 ANTI MENTION STATUS
+• .antimentionstatus on
+• .antimentionstatus off
+
+🤖 ANTIBOT
+• .antibot on
+• .antibot off
+
+⚙️ .settings`
+        });
+
+      }
+
+      // ====================
+      // SETTINGS
+      // ====================
+
+      if (command === ".settings") {
+
+        await sock.sendMessage(jid, {
+          text: `⚙️ *MATUPA DML SETTINGS*
+
+🤖 Autoreact: ${
+            settings.autoreact ? "ON ✅" : "OFF ❌"
+          }
+
+💬 Autoreply: ${
+            settings.autoreply ? "ON ✅" : "OFF ❌"
+          }
+
+🔗 Antilink: ${
+            settings.antilink ? "ON ✅" : "OFF ❌"
+          }
+
+📢 AntiMentionStatus: ${
+            settings.antimentionstatus
+              ? "ON ✅"
+              : "OFF ❌"
+          }
+
+🤖 Antibot: ${
+            settings.antibot ? "ON ✅" : "OFF ❌"
+          }`
+        });
+
+      }
+
+      // ====================
+      // AUTOREACT
+      // ====================
+
+      if (command === ".autoreact on") {
+
+        settings.autoreact = true;
+
+        await sock.sendMessage(jid, {
+          text: "🤖 Autoreact imewashwa ✅"
+        });
+
+      }
+
+      if (command === ".autoreact off") {
+
+        settings.autoreact = false;
+
+        await sock.sendMessage(jid, {
+          text: "🤖 Autoreact imezimwa ❌"
+        });
+
+      }
+
+      // ====================
+      // AUTOREPLY
+      // ====================
+
+      if (command === ".autoreply on") {
+
+        settings.autoreply = true;
+
+        await sock.sendMessage(jid, {
+          text: "💬 Autoreply imewashwa ✅"
+        });
+
+      }
+
+      if (command === ".autoreply off") {
+
+        settings.autoreply = false;
+
+        await sock.sendMessage(jid, {
+          text: "💬 Autoreply imezimwa ❌"
+        });
+
+      }
+
+      // ====================
+      // ANTILINK
+      // ====================
+
+      if (command === ".antilink on") {
+
+        settings.antilink = true;
+
+        await sock.sendMessage(jid, {
+          text: "🔗 Antilink imewashwa ✅"
+        });
+
+      }
+
+      if (command === ".antilink off") {
+
+        settings.antilink = false;
+
+        await sock.sendMessage(jid, {
+          text: "🔗 Antilink imezimwa ❌"
+        });
+
+      }
+
+      // ====================
+      // ANTI MENTION STATUS
+      // ====================
+
+      if (
+        command ===
+        ".antimentionstatus on"
+      ) {
+
+        settings.antimentionstatus = true;
+
+        await sock.sendMessage(jid, {
+          text:
+            "📢 AntiMentionStatus imewashwa ✅"
+        });
+
+      }
+
+      if (
+        command ===
+        ".antimentionstatus off"
+      ) {
+
+        settings.antimentionstatus = false;
+
+        await sock.sendMessage(jid, {
+          text:
+            "📢 AntiMentionStatus imezimwa ❌"
+        });
+
+      }
+
+      // ====================
+      // ANTIBOT
+      // ====================
+
+      if (command === ".antibot on") {
+
+        settings.antibot = true;
+
+        await sock.sendMessage(jid, {
+          text: "🤖 Antibot imewashwa ✅"
+        });
+
+      }
+
+      if (command === ".antibot off") {
+
+        settings.antibot = false;
+
+        await sock.sendMessage(jid, {
+          text: "🤖 Antibot imezimwa ❌"
+        });
+
+      }
+
+      // ====================
+      // TIME
+      // ====================
+
+      if (command === ".time") {
+
+        const time =
+          new Date().toLocaleTimeString("sw-TZ");
+
+        await sock.sendMessage(jid, {
+          text: `🕒 Saa: ${time}`
+        });
+
+      }
+
+      // ====================
+      // DATE
+      // ====================
+
+      if (command === ".date") {
+
+        const date =
+          new Date().toLocaleDateString("sw-TZ");
+
+        await sock.sendMessage(jid, {
+          text: `📅 Tarehe: ${date}`
+        });
+
+      }
+
+      // ====================
+      // OWNER
+      // ====================
+
+      if (command === ".owner") {
+
+        await sock.sendMessage(jid, {
+          text: "👤 Owner: Matupa DML"
+        });
+
+      }
+
+      // ====================
+      // GET PROFILE PICTURE
+      // ====================
+
+      if (command === ".getpp") {
+
+        const target =
+          msg.message.extendedTextMessage
+            ?.contextInfo
+            ?.participant;
+
+        if (!target) {
 
           await sock.sendMessage(jid, {
-            image: { url },
-            caption: "Profile picture"
+            text:
+              "Reply kwenye ujumbe wa mtu, kisha andika .getpp"
           });
-        } catch (error) {
-          await sock.sendMessage(jid, {
-            text: "DP haikupatikana au privacy settings zimeizuia."
-          });
+
+        } else {
+
+          try {
+
+            const url =
+              await sock.profilePictureUrl(
+                target,
+                "image"
+              );
+
+            await sock.sendMessage(jid, {
+              image: { url },
+              caption: "Profile picture"
+            });
+
+          } catch (error) {
+
+            await sock.sendMessage(jid, {
+              text:
+                "DP haikupatikana au privacy settings zimeizuia."
+            });
+
+          }
         }
       }
-    }
 
-    if (command === ".ph") {
-      const target =
-        msg.message.extendedTextMessage?.contextInfo?.participant;
+      // ====================
+      // PHONE
+      // ====================
 
-      if (!target) {
+      if (command === ".ph") {
+
+        const target =
+          msg.message.extendedTextMessage
+            ?.contextInfo
+            ?.participant;
+
+        if (!target) {
+
+          await sock.sendMessage(jid, {
+            text:
+              "Reply kwenye ujumbe wa mtu, kisha andika .ph"
+          });
+
+        } else {
+
+          const number =
+            target.split("@")[0];
+
+          await sock.sendMessage(jid, {
+            text:
+              `📱 Namba: +${number}\nAina ya simu haiwezi kujulikana kwa uhakika kupitia WhatsApp.`
+          });
+
+        }
+      }
+
+      // ====================
+      // BASS
+      // ====================
+
+      if (command === ".bass") {
+
         await sock.sendMessage(jid, {
-          text: "Reply kwenye ujumbe wa mtu, kisha andika .ph"
+          text:
+            "🎵 Bass effect bado inahitaji FFmpeg."
         });
-      } else {
-        const number = target.split("@")[0];
+
+      }
+
+      // ====================
+      // TREBLE
+      // ====================
+
+      if (command === ".treble") {
 
         await sock.sendMessage(jid, {
-          text: `📱 Namba: +${number}\nAina ya simu haiwezi kujulikana kwa uhakika kupitia WhatsApp.`
+          text:
+            "🎵 Treble effect bado inahitaji FFmpeg."
         });
+
       }
     }
-
-    if (command === ".bass") {
-      await sock.sendMessage(jid, {
-        text: "🎵 .bass bado inahitaji FFmpeg."
-      });
-    }
-
-    if (command === ".treble") {
-      await sock.sendMessage(jid, {
-        text: "🎵 .treble bado inahitaji FFmpeg."
-  
-    if (command === ".mode") {
-      await sock.sendMessage(jid, {
-        text: `⚙️ *MATUPA DML BOT MODE*
-
-🤖 .autoreact
-💬 .autoreply
-🖼️ .botdp`
-      });
-    }
-
-  }); // haya yaachie
-}
-
-startBot();     });
-    }
-  });
+  );
 }
 
 startBot();
