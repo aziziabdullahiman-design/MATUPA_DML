@@ -171,7 +171,21 @@ async function startBot() {
     if (command === ".treble") {
       await sock.sendMessage(jid, {
         text: "🎵 .treble bado inahitaji FFmpeg."
+  
+    if (command === ".mode") {
+      await sock.sendMessage(jid, {
+        text: `⚙️ *MATUPA DML BOT MODE*
+
+🤖 .autoreact
+💬 .autoreply
+🖼️ .botdp`
       });
+    }
+
+  }); // haya yaachie
+}
+
+startBot();     });
     }
   });
 }
