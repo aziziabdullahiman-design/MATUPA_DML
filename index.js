@@ -171,9 +171,7 @@ async function startBot() {
     if (command === ".treble") {
       await sock.sendMessage(jid, {
         text: "🎵 .treble bado inahitaji FFmpeg."
-    if(command===".vv") { await sock.sendMessage(jid, {
-        text:leta picha ya view once
-    });
+      });
     }
   });
 }
