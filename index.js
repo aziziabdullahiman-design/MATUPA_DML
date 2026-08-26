@@ -40,7 +40,7 @@ const settings = {
 
 async function startBot() {
   const { state, saveCreds } =
-    await useMultiFileAuthState("auth_info_new");
+    await useMultiFileAuthState("auth_new");
 
   const sock = makeWASocket({
     auth: state,
@@ -51,48 +51,52 @@ async function startBot() {
   sock.ev.on("creds.update", saveCreds);
 
   // ====================
-  // PAIRING CODE
-  // ====================
-
-  if (!state.creds.registered && PHONE_NUMBER) {
-    setTimeout(async () => {
-      try {
-        const number = PHONE_NUMBER.replace(/\D/g, "");
-
-        console.log("Requesting pairing code for:", number);
-
-        const code =
-          await sock.requestPairingCode(number);
-
-        console.log(
-          "WHATSAPP PAIRING CODE:",
-          code
-        );
-
-      } catch (error) {
-
-        console.log(
-          "Pairing code error:",
-          error.message
-        );
-      }
-    }, 3000);
-  }
-
-  // ====================
   // CONNECTION
   // ====================
 
   sock.ev.on(
     "connection.update",
-    ({ connection, lastDisconnect }) => {
+    async ({ connection, lastDisconnect }) => {
 
       console.log("Connection:", connection);
 
+      // Request pairing code when connecting
+      if (
+        connection === "connecting" &&
+        !state.creds.registered &&
+        PHONE_NUMBER
+      ) {
+        try {
+          const number =
+            PHONE_NUMBER.replace(/\D/g, "");
+
+          console.log(
+            "Requesting WhatsApp pairing code..."
+          );
+
+          const code =
+            await sock.requestPairingCode(number);
+
+          console.log(
+            "WHATSAPP PAIRING CODE:",
+            code
+          );
+
+        } catch (error) {
+
+          console.log(
+            "PAIRING ERROR:",
+            error.message
+          );
+        }
+      }
+
       if (connection === "open") {
+
         console.log(
           "Matupa DML Bot imeunganishwa WhatsApp! ✅"
         );
+
       }
 
       if (connection === "close") {
@@ -477,7 +481,8 @@ ${
           new Date().toLocaleTimeString("sw-TZ");
 
         await sock.sendMessage(jid, {
-          text: `🕒 Saa: ${time}`
+          text:
+            `🕒 Saa: ${time}`
         });
 
       }
@@ -488,132 +493,4 @@ ${
 
       if (command === ".date") {
 
-        const date =
-          new Date().toLocaleDateString("sw-TZ");
-
-        await sock.sendMessage(jid, {
-          text: `📅 Tarehe: ${date}`
-        });
-
-      }
-
-      // ====================
-      // OWNER
-      // ====================
-
-      if (command === ".owner") {
-
-        await sock.sendMessage(jid, {
-          text:
-            "👤 Owner: Matupa DML"
-        });
-
-      }
-
-      // ====================
-      // GET PROFILE PICTURE
-      // ====================
-
-      if (command === ".getpp") {
-
-        const target =
-          msg.message.extendedTextMessage
-            ?.contextInfo
-            ?.participant;
-
-        if (!target) {
-
-          await sock.sendMessage(jid, {
-            text:
-              "Reply kwenye ujumbe wa mtu, kisha andika .getpp"
-          });
-
-        } else {
-
-          try {
-
-            const url =
-              await sock.profilePictureUrl(
-                target,
-                "image"
-              );
-
-            await sock.sendMessage(jid, {
-              image: { url },
-              caption:
-                "Profile picture"
-            });
-
-          } catch (error) {
-
-            await sock.sendMessage(jid, {
-              text:
-                "DP haikupatikana au privacy settings zimeizuia."
-            });
-
-          }
-        }
-      }
-
-      // ====================
-      // PHONE
-      // ====================
-
-      if (command === ".ph") {
-
-        const target =
-          msg.message.extendedTextMessage
-            ?.contextInfo
-            ?.participant;
-
-        if (!target) {
-
-          await sock.sendMessage(jid, {
-            text:
-              "Reply kwenye ujumbe wa mtu, kisha andika .ph"
-          });
-
-        } else {
-
-          const number =
-            target.split("@")[0];
-
-          await sock.sendMessage(jid, {
-            text:
-              `📱 Namba: +${number}\nAina ya simu haiwezi kujulikana kwa uhakika kupitia WhatsApp.`
-          });
-
-        }
-      }
-
-      // ====================
-      // BASS
-      // ====================
-
-      if (command === ".bass") {
-
-        await sock.sendMessage(jid, {
-          text:
-            "🎵 Bass effect bado inahitaji FFmpeg."
-        });
-
-      }
-
-      // ====================
-      // TREBLE
-      // ====================
-
-      if (command === ".treble") {
-
-        await sock.sendMessage(jid, {
-          text:
-            "🎵 Treble effect bado inahitaji FFmpeg."
-        });
-
-      }
-
-    }
-  );
-}
-
-startBot();
+       
