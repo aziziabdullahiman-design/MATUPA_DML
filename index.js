@@ -10,10 +10,6 @@ const http = require("http");
 const PORT = process.env.PORT || 10000;
 const PHONE_NUMBER = process.env.PHONE_NUMBER;
 
-// ====================
-// SERVER
-// ====================
-
 http.createServer((req, res) => {
   res.writeHead(200);
   res.end("Matupa DML Bot is running!");
@@ -21,22 +17,14 @@ http.createServer((req, res) => {
   console.log(`Server running on port ${PORT}`);
 });
 
-// ====================
-// SETTINGS
-// ====================
-
 const settings = {
-  autoreply: false,
+  mode: "public",
   autoreact: false,
+  autoreply: false,
   antilink: false,
   antimentionstatus: false,
-  antibot: false,
-  mode: "public"
+  antibot: false
 };
-
-// ====================
-// START BOT
-// ====================
 
 async function startBot() {
   const { state, saveCreds } =
@@ -50,447 +38,281 @@ async function startBot() {
 
   sock.ev.on("creds.update", saveCreds);
 
-  // ====================
-  // CONNECTION
-  // ====================
+  sock.ev.on("connection.update", async (update) => {
+    const { connection, lastDisconnect } = update;
 
-  sock.ev.on(
-    "connection.update",
-    async ({ connection, lastDisconnect }) => {
+    console.log("Connection:", connection);
 
-      console.log("Connection:", connection);
+    if (
+      connection === "connecting" &&
+      !state.creds.registered &&
+      PHONE_NUMBER
+    ) {
+      try {
+        const number = PHONE_NUMBER.replace(/\D/g, "");
 
-      // Request pairing code when connecting
-      if (
-        connection === "connecting" &&
-        !state.creds.registered &&
-        PHONE_NUMBER
-      ) {
-        try {
-          const number =
-            PHONE_NUMBER.replace(/\D/g, "");
+        console.log("Requesting WhatsApp pairing code...");
 
-          console.log(
-            "Requesting WhatsApp pairing code..."
-          );
+        const code = await sock.requestPairingCode(number);
 
-          const code =
-            await sock.requestPairingCode(number);
-
-          console.log(
-            "WHATSAPP PAIRING CODE:",
-            code
-          );
-
-        } catch (error) {
-
-          console.log(
-            "PAIRING ERROR:",
-            error.message
-          );
-        }
-      }
-
-      if (connection === "open") {
-
-        console.log(
-          "Matupa DML Bot imeunganishwa WhatsApp! ✅"
-        );
-
-      }
-
-      if (connection === "close") {
-
-        const shouldReconnect =
-          lastDisconnect?.error?.output?.statusCode !==
-          DisconnectReason.loggedOut;
-
-        console.log(
-          "Connection imefungwa."
-        );
-
-        if (shouldReconnect) {
-          setTimeout(startBot, 3000);
-        }
+        console.log("WHATSAPP PAIRING CODE:", code);
+      } catch (error) {
+        console.log("PAIRING ERROR:", error.message);
       }
     }
-  );
 
-  // ====================
-  // MESSAGES
-  // ====================
+    if (connection === "open") {
+      console.log(
+        "Matupa DML Bot imeunganishwa WhatsApp! ✅"
+      );
+    }
 
-  sock.ev.on(
-    "messages.upsert",
-    async ({ messages }) => {
+    if (connection === "close") {
+      const shouldReconnect =
+        lastDisconnect?.error?.output?.statusCode !==
+        DisconnectReason.loggedOut;
 
-      const msg = messages[0];
+      console.log("Connection imefungwa.");
 
-      if (!msg?.message || msg.key.fromMe) {
-        return;
+      if (shouldReconnect) {
+        setTimeout(startBot, 3000);
       }
+    }
+  });
 
-      const text =
-        msg.message.conversation ||
-        msg.message.extendedTextMessage?.text ||
-        "";
+  sock.ev.on("messages.upsert", async ({ messages }) => {
+    const msg = messages[0];
 
-      const command =
-        text.trim().toLowerCase();
+    if (!msg?.message || msg.key.fromMe) return;
 
-      const jid = msg.key.remoteJid;
+    const text =
+      msg.message.conversation ||
+      msg.message.extendedTextMessage?.text ||
+      "";
 
-      const isGroup =
-        jid.endsWith("@g.us");
+    const command = text.trim().toLowerCase();
+    const jid = msg.key.remoteJid;
 
-      // ====================
-      // PRIVATE MODE
-      // ====================
+    if (
+      settings.mode === "private" &&
+      jid.endsWith("@g.us")
+    ) {
+      return;
+    }
 
-      if (
-        settings.mode === "private" &&
-        isGroup
-      ) {
-        return;
-      }
-
-      // ====================
-      // PING
-      // ====================
-
-      if (command === ".ping") {
-
-        await sock.sendMessage(jid, {
-          text:
-            "🏓 Pong! Bot inafanya kazi."
-        });
-
-      }
-
-      // ====================
-      // HI
-      // ====================
-
-      if (
-        command === ".hi" ||
-        command === "hi"
-      ) {
-
-        await sock.sendMessage(jid, {
-          text:
-            "Habari 👋 Mimi ni Matupa DML Bot."
-        });
-
-      }
-
-      // ====================
-      // MENU
-      // ====================
-
-      if (command === ".menu") {
-
-        await sock.sendMessage(jid, {
-          text: `🤖 *MATUPA DML BOT*
+    if (command === ".menu") {
+      await sock.sendMessage(jid, {
+        text: `🤖 *MATUPA DML BOT*
 
 📋 *COMMANDS*
 
-• .ping
-• .hi
-• .menu
-• .time
-• .date
-• .owner
-• .getpp
-• .ph
-• .bass
-• .treble
+.menu
+.ping
+.hi
+.time
+.date
+.owner
+.getpp
+.ph
+.bass
+.treble
 
 ⚙️ *MODE*
-• .mode
-• .settings
-• .modeprivate
-• .modepublic
+
+.mode
+.settings
+.modeprivate
+.modepublic
 
 🛡️ *SECURITY*
-• .antilink on/off
-• .antimentionstatus on/off
-• .antibot on/off
+
+.antilink on/off
+.antimentionstatus on/off
+.antibot on/off
 
 🤖 *AUTO*
-• .autoreact on/off
-• .autoreply on/off`
-        });
 
-      }
+.autoreact on/off
+.autoreply on/off`
+      });
+    }
 
-      // ====================
-      // MODE
-      // ====================
+    if (command === ".ping") {
+      await sock.sendMessage(jid, {
+        text: "🏓 Pong! Bot inafanya kazi."
+      });
+    }
 
-      if (command === ".mode") {
+    if (command === ".hi" || command === "hi") {
+      await sock.sendMessage(jid, {
+        text: "Habari 👋 Mimi ni Matupa DML Bot."
+      });
+    }
 
-        await sock.sendMessage(jid, {
-          text: `⚙️ *MATUPA DML BOT MODE*
+    if (command === ".mode") {
+      await sock.sendMessage(jid, {
+        text:
+          `⚙️ *BOT MODE*\n\n` +
+          `Current: ${
+            settings.mode === "public"
+              ? "PUBLIC 🌐"
+              : "PRIVATE 🔒"
+          }\n\n` +
+          `.modeprivate\n` +
+          `.modepublic`
+      });
+    }
 
-🌐 Current mode:
-${
-  settings.mode === "public"
-    ? "PUBLIC ✅"
-    : "PRIVATE 🔒"
+    if (command === ".modeprivate") {
+      settings.mode = "private";
+
+      await sock.sendMessage(jid, {
+        text:
+          "🔒 Private mode ON.\nBot itafanya kazi kwenye inbox/private pekee."
+      });
+    }
+
+    if (command === ".modepublic") {
+      settings.mode = "public";
+
+      await sock.sendMessage(jid, {
+        text:
+          "🌐 Public mode ON.\nBot inaweza kutumika private na groups."
+      });
+    }
+
+    if (command === ".settings") {
+      await sock.sendMessage(jid, {
+        text:
+          `⚙️ *MATUPA DML SETTINGS*\n\n` +
+          `Mode: ${settings.mode}\n` +
+          `Autoreact: ${settings.autoreact ? "ON ✅" : "OFF ❌"}\n` +
+          `Autoreply: ${settings.autoreply ? "ON ✅" : "OFF ❌"}\n` +
+          `Antilink: ${settings.antilink ? "ON ✅" : "OFF ❌"}\n` +
+          `AntiMentionStatus: ${settings.antimentionstatus ? "ON ✅" : "OFF ❌"}\n` +
+          `Antibot: ${settings.antibot ? "ON ✅" : "OFF ❌"}`
+      });
+    }
+
+    if (command === ".autoreact on") {
+      settings.autoreact = true;
+
+      await sock.sendMessage(jid, {
+        text: "🤖 Autoreact ON ✅"
+      });
+    }
+
+    if (command === ".autoreact off") {
+      settings.autoreact = false;
+
+      await sock.sendMessage(jid, {
+        text: "🤖 Autoreact OFF ❌"
+      });
+    }
+
+    if (command === ".autoreply on") {
+      settings.autoreply = true;
+
+      await sock.sendMessage(jid, {
+        text: "💬 Autoreply ON ✅"
+      });
+    }
+
+    if (command === ".autoreply off") {
+      settings.autoreply = false;
+
+      await sock.sendMessage(jid, {
+        text: "💬 Autoreply OFF ❌"
+      });
+    }
+
+    if (command === ".antilink on") {
+      settings.antilink = true;
+
+      await sock.sendMessage(jid, {
+        text: "🔗 Antilink ON ✅"
+      });
+    }
+
+    if (command === ".antilink off") {
+      settings.antilink = false;
+
+      await sock.sendMessage(jid, {
+        text: "🔗 Antilink OFF ❌"
+      });
+    }
+
+    if (command === ".antimentionstatus on") {
+      settings.antimentionstatus = true;
+
+      await sock.sendMessage(jid, {
+        text: "📢 AntiMentionStatus ON ✅"
+      });
+    }
+
+    if (command === ".antimentionstatus off") {
+      settings.antimentionstatus = false;
+
+      await sock.sendMessage(jid, {
+        text: "📢 AntiMentionStatus OFF ❌"
+      });
+    }
+
+    if (command === ".antibot on") {
+      settings.antibot = true;
+
+      await sock.sendMessage(jid, {
+        text: "🤖 Antibot ON ✅"
+      });
+    }
+
+    if (command === ".antibot off") {
+      settings.antibot = false;
+
+      await sock.sendMessage(jid, {
+        text: "🤖 Antibot OFF ❌"
+      });
+    }
+
+    if (command === ".time") {
+      await sock.sendMessage(jid, {
+        text: `🕒 ${new Date().toLocaleTimeString("sw-TZ")}`
+      });
+    }
+
+    if (command === ".date") {
+      await sock.sendMessage(jid, {
+        text: `📅 ${new Date().toLocaleDateString("sw-TZ")}`
+      });
+    }
+
+    if (command === ".owner") {
+      await sock.sendMessage(jid, {
+        text: "👤 Owner: Matupa DML"
+      });
+    }
+
+    if (command === ".ph") {
+      await sock.sendMessage(jid, {
+        text:
+          "📱 Reply ujumbe wa mtu kisha tumia .ph. WhatsApp haiwezi kutuambia kwa uhakika aina ya simu yake."
+      });
+    }
+
+    if (command === ".bass") {
+      await sock.sendMessage(jid, {
+        text:
+          "🎵 Bass command ipo. Audio processing bado haijaunganishwa."
+      });
+    }
+
+    if (command === ".treble") {
+      await sock.sendMessage(jid, {
+        text:
+          "🎵 Treble command ipo. Audio processing bado haijaunganishwa."
+      });
+    }
+  });
 }
 
-🔒 .modeprivate
-🌐 .modepublic
-
-🤖 .autoreact on/off
-💬 .autoreply on/off
-🔗 .antilink on/off
-📢 .antimentionstatus on/off
-🤖 .antibot on/off`
-        });
-
-      }
-
-      // ====================
-      // PRIVATE MODE
-      // ====================
-
-      if (command === ".modeprivate") {
-
-        settings.mode = "private";
-
-        await sock.sendMessage(jid, {
-          text:
-            "🔒 Private mode imewashwa.\nBot itatumika kwenye inbox/private pekee."
-        });
-
-      }
-
-      // ====================
-      // PUBLIC MODE
-      // ====================
-
-      if (command === ".modepublic") {
-
-        settings.mode = "public";
-
-        await sock.sendMessage(jid, {
-          text:
-            "🌐 Public mode imewashwa.\nBot inaweza kutumika private na groups."
-        });
-
-      }
-
-      // ====================
-      // SETTINGS
-      // ====================
-
-      if (command === ".settings") {
-
-        await sock.sendMessage(jid, {
-          text: `⚙️ *MATUPA DML SETTINGS*
-
-🌐 Mode:
-${
-  settings.mode === "public"
-    ? "PUBLIC ✅"
-    : "PRIVATE 🔒"
-}
-
-🤖 Autoreact:
-${
-  settings.autoreact
-    ? "ON ✅"
-    : "OFF ❌"
-}
-
-💬 Autoreply:
-${
-  settings.autoreply
-    ? "ON ✅"
-    : "OFF ❌"
-}
-
-🔗 Antilink:
-${
-  settings.antilink
-    ? "ON ✅"
-    : "OFF ❌"
-}
-
-📢 AntiMentionStatus:
-${
-  settings.antimentionstatus
-    ? "ON ✅"
-    : "OFF ❌"
-}
-
-🤖 Antibot:
-${
-  settings.antibot
-    ? "ON ✅"
-    : "OFF ❌"
-}`
-        });
-
-      }
-
-      // ====================
-      // AUTOREACT
-      // ====================
-
-      if (command === ".autoreact on") {
-
-        settings.autoreact = true;
-
-        await sock.sendMessage(jid, {
-          text:
-            "🤖 Autoreact imewashwa ✅"
-        });
-
-      }
-
-      if (command === ".autoreact off") {
-
-        settings.autoreact = false;
-
-        await sock.sendMessage(jid, {
-          text:
-            "🤖 Autoreact imezimwa ❌"
-        });
-
-      }
-
-      // ====================
-      // AUTOREPLY
-      // ====================
-
-      if (command === ".autoreply on") {
-
-        settings.autoreply = true;
-
-        await sock.sendMessage(jid, {
-          text:
-            "💬 Autoreply imewashwa ✅"
-        });
-
-      }
-
-      if (command === ".autoreply off") {
-
-        settings.autoreply = false;
-
-        await sock.sendMessage(jid, {
-          text:
-            "💬 Autoreply imezimwa ❌"
-        });
-
-      }
-
-      // ====================
-      // ANTILINK
-      // ====================
-
-      if (command === ".antilink on") {
-
-        settings.antilink = true;
-
-        await sock.sendMessage(jid, {
-          text:
-            "🔗 Antilink imewashwa ✅"
-        });
-
-      }
-
-      if (command === ".antilink off") {
-
-        settings.antilink = false;
-
-        await sock.sendMessage(jid, {
-          text:
-            "🔗 Antilink imezimwa ❌"
-        });
-
-      }
-
-      // ====================
-      // ANTI MENTION STATUS
-      // ====================
-
-      if (
-        command ===
-        ".antimentionstatus on"
-      ) {
-
-        settings.antimentionstatus = true;
-
-        await sock.sendMessage(jid, {
-          text:
-            "📢 AntiMentionStatus imewashwa ✅"
-        });
-
-      }
-
-      if (
-        command ===
-        ".antimentionstatus off"
-      ) {
-
-        settings.antimentionstatus = false;
-
-        await sock.sendMessage(jid, {
-          text:
-            "📢 AntiMentionStatus imezimwa ❌"
-        });
-
-      }
-
-      // ====================
-      // ANTIBOT
-      // ====================
-
-      if (command === ".antibot on") {
-
-        settings.antibot = true;
-
-        await sock.sendMessage(jid, {
-          text:
-            "🤖 Antibot imewashwa ✅"
-        });
-
-      }
-
-      if (command === ".antibot off") {
-
-        settings.antibot = false;
-
-        await sock.sendMessage(jid, {
-          text:
-            "🤖 Antibot imezimwa ❌"
-        });
-
-      }
-
-      // ====================
-      // TIME
-      // ====================
-
-      if (command === ".time") {
-
-        const time =
-          new Date().toLocaleTimeString("sw-TZ");
-
-        await sock.sendMessage(jid, {
-          text:
-            `🕒 Saa: ${time}`
-        });
-
-      }
-
-      // ====================
-      // DATE
-      // ====================
-
-      if (command === ".date") {
-
-       
+startBot();
