@@ -57,12 +57,20 @@ async function startBot() {
   if (!state.creds.registered && PHONE_NUMBER) {
     setTimeout(async () => {
       try {
-        const code = await sock.requestPairingCode(
-          PHONE_NUMBER.replace(/\D/g, "")
+        const number = PHONE_NUMBER.replace(/\D/g, "");
+
+        console.log("Requesting pairing code for:", number);
+
+        const code =
+          await sock.requestPairingCode(number);
+
+        console.log(
+          "WHATSAPP PAIRING CODE:",
+          code
         );
 
-        console.log("WHATSAPP PAIRING CODE:", code);
       } catch (error) {
+
         console.log(
           "Pairing code error:",
           error.message
@@ -92,6 +100,10 @@ async function startBot() {
         const shouldReconnect =
           lastDisconnect?.error?.output?.statusCode !==
           DisconnectReason.loggedOut;
+
+        console.log(
+          "Connection imefungwa."
+        );
 
         if (shouldReconnect) {
           setTimeout(startBot, 3000);
@@ -143,9 +155,12 @@ async function startBot() {
       // ====================
 
       if (command === ".ping") {
+
         await sock.sendMessage(jid, {
-          text: "🏓 Pong! Bot inafanya kazi."
+          text:
+            "🏓 Pong! Bot inafanya kazi."
         });
+
       }
 
       // ====================
@@ -156,10 +171,12 @@ async function startBot() {
         command === ".hi" ||
         command === "hi"
       ) {
+
         await sock.sendMessage(jid, {
           text:
             "Habari 👋 Mimi ni Matupa DML Bot."
         });
+
       }
 
       // ====================
@@ -167,6 +184,7 @@ async function startBot() {
       // ====================
 
       if (command === ".menu") {
+
         await sock.sendMessage(jid, {
           text: `🤖 *MATUPA DML BOT*
 
@@ -180,6 +198,8 @@ async function startBot() {
 • .owner
 • .getpp
 • .ph
+• .bass
+• .treble
 
 ⚙️ *MODE*
 • .mode
@@ -196,6 +216,7 @@ async function startBot() {
 • .autoreact on/off
 • .autoreply on/off`
         });
+
       }
 
       // ====================
@@ -203,15 +224,16 @@ async function startBot() {
       // ====================
 
       if (command === ".mode") {
+
         await sock.sendMessage(jid, {
           text: `⚙️ *MATUPA DML BOT MODE*
 
 🌐 Current mode:
-${settings.mode === "public"
-  ? "PUBLIC ✅"
-  : "PRIVATE 🔒"}
-
-Commands:
+${
+  settings.mode === "public"
+    ? "PUBLIC ✅"
+    : "PRIVATE 🔒"
+}
 
 🔒 .modeprivate
 🌐 .modepublic
@@ -222,6 +244,7 @@ Commands:
 📢 .antimentionstatus on/off
 🤖 .antibot on/off`
         });
+
       }
 
       // ====================
@@ -229,12 +252,14 @@ Commands:
       // ====================
 
       if (command === ".modeprivate") {
+
         settings.mode = "private";
 
         await sock.sendMessage(jid, {
           text:
             "🔒 Private mode imewashwa.\nBot itatumika kwenye inbox/private pekee."
         });
+
       }
 
       // ====================
@@ -242,12 +267,14 @@ Commands:
       // ====================
 
       if (command === ".modepublic") {
+
         settings.mode = "public";
 
         await sock.sendMessage(jid, {
           text:
             "🌐 Public mode imewashwa.\nBot inaweza kutumika private na groups."
         });
+
       }
 
       // ====================
@@ -255,31 +282,53 @@ Commands:
       // ====================
 
       if (command === ".settings") {
+
         await sock.sendMessage(jid, {
           text: `⚙️ *MATUPA DML SETTINGS*
 
 🌐 Mode:
-${settings.mode === "public"
-  ? "PUBLIC ✅"
-  : "PRIVATE 🔒"}
+${
+  settings.mode === "public"
+    ? "PUBLIC ✅"
+    : "PRIVATE 🔒"
+}
 
 🤖 Autoreact:
-${settings.autoreact ? "ON ✅" : "OFF ❌"}
+${
+  settings.autoreact
+    ? "ON ✅"
+    : "OFF ❌"
+}
 
 💬 Autoreply:
-${settings.autoreply ? "ON ✅" : "OFF ❌"}
+${
+  settings.autoreply
+    ? "ON ✅"
+    : "OFF ❌"
+}
 
 🔗 Antilink:
-${settings.antilink ? "ON ✅" : "OFF ❌"}
+${
+  settings.antilink
+    ? "ON ✅"
+    : "OFF ❌"
+}
 
 📢 AntiMentionStatus:
-${settings.antimentionstatus
-  ? "ON ✅"
-  : "OFF ❌"}
+${
+  settings.antimentionstatus
+    ? "ON ✅"
+    : "OFF ❌"
+}
 
 🤖 Antibot:
-${settings.antibot ? "ON ✅" : "OFF ❌"}`
+${
+  settings.antibot
+    ? "ON ✅"
+    : "OFF ❌"
+}`
         });
+
       }
 
       // ====================
@@ -287,19 +336,25 @@ ${settings.antibot ? "ON ✅" : "OFF ❌"}`
       // ====================
 
       if (command === ".autoreact on") {
+
         settings.autoreact = true;
 
         await sock.sendMessage(jid, {
-          text: "🤖 Autoreact imewashwa ✅"
+          text:
+            "🤖 Autoreact imewashwa ✅"
         });
+
       }
 
       if (command === ".autoreact off") {
+
         settings.autoreact = false;
 
         await sock.sendMessage(jid, {
-          text: "🤖 Autoreact imezimwa ❌"
+          text:
+            "🤖 Autoreact imezimwa ❌"
         });
+
       }
 
       // ====================
@@ -307,19 +362,25 @@ ${settings.antibot ? "ON ✅" : "OFF ❌"}`
       // ====================
 
       if (command === ".autoreply on") {
+
         settings.autoreply = true;
 
         await sock.sendMessage(jid, {
-          text: "💬 Autoreply imewashwa ✅"
+          text:
+            "💬 Autoreply imewashwa ✅"
         });
+
       }
 
       if (command === ".autoreply off") {
+
         settings.autoreply = false;
 
         await sock.sendMessage(jid, {
-          text: "💬 Autoreply imezimwa ❌"
+          text:
+            "💬 Autoreply imezimwa ❌"
         });
+
       }
 
       // ====================
@@ -327,19 +388,25 @@ ${settings.antibot ? "ON ✅" : "OFF ❌"}`
       // ====================
 
       if (command === ".antilink on") {
+
         settings.antilink = true;
 
         await sock.sendMessage(jid, {
-          text: "🔗 Antilink imewashwa ✅"
+          text:
+            "🔗 Antilink imewashwa ✅"
         });
+
       }
 
       if (command === ".antilink off") {
+
         settings.antilink = false;
 
         await sock.sendMessage(jid, {
-          text: "🔗 Antilink imezimwa ❌"
+          text:
+            "🔗 Antilink imezimwa ❌"
         });
+
       }
 
       // ====================
@@ -350,24 +417,28 @@ ${settings.antibot ? "ON ✅" : "OFF ❌"}`
         command ===
         ".antimentionstatus on"
       ) {
+
         settings.antimentionstatus = true;
 
         await sock.sendMessage(jid, {
           text:
             "📢 AntiMentionStatus imewashwa ✅"
         });
+
       }
 
       if (
         command ===
         ".antimentionstatus off"
       ) {
+
         settings.antimentionstatus = false;
 
         await sock.sendMessage(jid, {
           text:
             "📢 AntiMentionStatus imezimwa ❌"
         });
+
       }
 
       // ====================
@@ -375,21 +446,25 @@ ${settings.antibot ? "ON ✅" : "OFF ❌"}`
       // ====================
 
       if (command === ".antibot on") {
+
         settings.antibot = true;
 
         await sock.sendMessage(jid, {
           text:
             "🤖 Antibot imewashwa ✅"
         });
+
       }
 
       if (command === ".antibot off") {
+
         settings.antibot = false;
 
         await sock.sendMessage(jid, {
           text:
             "🤖 Antibot imezimwa ❌"
         });
+
       }
 
       // ====================
@@ -397,12 +472,14 @@ ${settings.antibot ? "ON ✅" : "OFF ❌"}`
       // ====================
 
       if (command === ".time") {
+
         const time =
           new Date().toLocaleTimeString("sw-TZ");
 
         await sock.sendMessage(jid, {
           text: `🕒 Saa: ${time}`
         });
+
       }
 
       // ====================
@@ -410,12 +487,14 @@ ${settings.antibot ? "ON ✅" : "OFF ❌"}`
       // ====================
 
       if (command === ".date") {
+
         const date =
           new Date().toLocaleDateString("sw-TZ");
 
         await sock.sendMessage(jid, {
           text: `📅 Tarehe: ${date}`
         });
+
       }
 
       // ====================
@@ -423,9 +502,12 @@ ${settings.antibot ? "ON ✅" : "OFF ❌"}`
       // ====================
 
       if (command === ".owner") {
+
         await sock.sendMessage(jid, {
-          text: "👤 Owner: Matupa DML"
+          text:
+            "👤 Owner: Matupa DML"
         });
+
       }
 
       // ====================
@@ -458,7 +540,8 @@ ${settings.antibot ? "ON ✅" : "OFF ❌"}`
 
             await sock.sendMessage(jid, {
               image: { url },
-              caption: "Profile picture"
+              caption:
+                "Profile picture"
             });
 
           } catch (error) {
@@ -508,10 +591,12 @@ ${settings.antibot ? "ON ✅" : "OFF ❌"}`
       // ====================
 
       if (command === ".bass") {
+
         await sock.sendMessage(jid, {
           text:
             "🎵 Bass effect bado inahitaji FFmpeg."
         });
+
       }
 
       // ====================
@@ -519,10 +604,12 @@ ${settings.antibot ? "ON ✅" : "OFF ❌"}`
       // ====================
 
       if (command === ".treble") {
+
         await sock.sendMessage(jid, {
           text:
             "🎵 Treble effect bado inahitaji FFmpeg."
         });
+
       }
 
     }
