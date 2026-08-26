@@ -40,7 +40,7 @@ const settings = {
 
 async function startBot() {
   const { state, saveCreds } =
-    await useMultiFileAuthState("auth_info");
+    await useMultiFileAuthState("auth_info_new");
 
   const sock = makeWASocket({
     auth: state,
