@@ -28,7 +28,7 @@ const settings = {
 
 async function startBot() {
   const { state, saveCreds } =
-    await useMultiFileAuthState("auth_2026_new");
+    await useMultiFileAuthState("auth_new_2");
 
   const sock = makeWASocket({
     auth: state,
@@ -58,7 +58,8 @@ async function startBot() {
 
         console.log("Requesting WhatsApp pairing code...");
 
-        const code = await sock.requestPairingCode(number);
+        const code =
+          await sock.requestPairingCode(number);
 
         console.log(
           "WHATSAPP PAIRING CODE:",
@@ -79,60 +80,52 @@ async function startBot() {
     }
 
     if (connection === "close") {
-      const statusCode =
+      const status =
         lastDisconnect?.error?.output?.statusCode;
 
-      console.log(
-        "Connection imefungwa. Status:",
-        statusCode
-      );
+      console.log("Connection imefungwa:", status);
 
-      if (statusCode !== DisconnectReason.loggedOut) {
+      if (status !== DisconnectReason.loggedOut) {
         setTimeout(startBot, 3000);
       }
     }
   });
 
   sock.ev.on("messages.upsert", async ({ messages }) => {
-    try {
-      const msg = messages[0];
+    const msg = messages[0];
 
-      if (!msg?.message || msg.key.fromMe) {
-        return;
-      }
+    if (!msg?.message || msg.key.fromMe) return;
 
-      const text =
-        msg.message.conversation ||
-        msg.message.extendedTextMessage?.text ||
-        "";
+    const text =
+      msg.message.conversation ||
+      msg.message.extendedTextMessage?.text ||
+      "";
 
-      const command =
-        text.trim().toLowerCase();
+    const command = text.trim().toLowerCase();
+    const jid = msg.key.remoteJid;
 
-      const jid = msg.key.remoteJid;
+    if (
+      settings.mode === "private" &&
+      jid.endsWith("@g.us")
+    ) {
+      return;
+    }
 
-      if (
-        settings.mode === "private" &&
-        jid.endsWith("@g.us")
-      ) {
-        return;
-      }
+    if (command === ".ping") {
+      await sock.sendMessage(jid, {
+        text: "🏓 Pong! Bot inafanya kazi."
+      });
+    }
 
-      if (command === ".ping") {
-        await sock.sendMessage(jid, {
-          text: "🏓 Pong! Bot inafanya kazi."
-        });
-      }
+    if (command === ".hi" || command === "hi") {
+      await sock.sendMessage(jid, {
+        text: "Habari 👋 Mimi ni Matupa DML Bot."
+      });
+    }
 
-      if (command === ".hi" || command === "hi") {
-        await sock.sendMessage(jid, {
-          text: "Habari 👋 Mimi ni Matupa DML Bot."
-        });
-      }
-
-      if (command === ".menu") {
-        await sock.sendMessage(jid, {
-          text:
+    if (command === ".menu") {
+      await sock.sendMessage(jid, {
+        text:
 `🤖 *MATUPA DML BOT*
 
 📋 *COMMANDS*
@@ -140,70 +133,56 @@ async function startBot() {
 .menu
 .ping
 .hi
-.time
-.date
-.owner
-.getpp
-.ph
-.bass
-.treble
 
 ⚙️ *MODE*
-
 .mode
 .settings
 .modeprivate
 .modepublic
 
 🛡️ *SECURITY*
-
 .antilink on/off
 .antimentionstatus on/off
 .antibot on/off
 
 🤖 *AUTO*
-
 .autoreact on/off
 .autoreply on/off`
-        });
-      }
+      });
+    }
 
-      if (command === ".mode") {
-        await sock.sendMessage(jid, {
-          text:
+    if (command === ".mode") {
+      await sock.sendMessage(jid, {
+        text:
 `⚙️ *BOT MODE*
 
-Current:
-${settings.mode === "public"
-  ? "PUBLIC 🌐"
-  : "PRIVATE 🔒"}
+Current mode:
+${settings.mode === "public" ? "PUBLIC 🌐" : "PRIVATE 🔒"}
 
 .modeprivate
 .modepublic`
-        });
-      }
+      });
+    }
 
-      if (command === ".modeprivate") {
-        settings.mode = "private";
+    if (command === ".modeprivate") {
+      settings.mode = "private";
 
-        await sock.sendMessage(jid, {
-          text:
-            "🔒 Private mode ON."
-        });
-      }
+      await sock.sendMessage(jid, {
+        text: "🔒 Private mode ON."
+      });
+    }
 
-      if (command === ".modepublic") {
-        settings.mode = "public";
+    if (command === ".modepublic") {
+      settings.mode = "public";
 
-        await sock.sendMessage(jid, {
-          text:
-            "🌐 Public mode ON."
-        });
-      }
+      await sock.sendMessage(jid, {
+        text: "🌐 Public mode ON."
+      });
+    }
 
-      if (command === ".settings") {
-        await sock.sendMessage(jid, {
-          text:
+    if (command === ".settings") {
+      await sock.sendMessage(jid, {
+        text:
 `⚙️ *MATUPA DML SETTINGS*
 
 Mode: ${settings.mode}
@@ -212,39 +191,89 @@ Autoreply: ${settings.autoreply ? "ON ✅" : "OFF ❌"}
 Antilink: ${settings.antilink ? "ON ✅" : "OFF ❌"}
 AntiMentionStatus: ${settings.antimentionstatus ? "ON ✅" : "OFF ❌"}
 Antibot: ${settings.antibot ? "ON ✅" : "OFF ❌"}`
-        });
-      }
+      });
+    }
 
-      if (command === ".autoreact on") {
-        settings.autoreact = true;
+    if (command === ".autoreact on") {
+      settings.autoreact = true;
 
-        await sock.sendMessage(jid, {
-          text: "🤖 Autoreact ON ✅"
-        });
-      }
+      await sock.sendMessage(jid, {
+        text: "🤖 Autoreact ON ✅"
+      });
+    }
 
-      if (command === ".autoreact off") {
-        settings.autoreact = false;
+    if (command === ".autoreact off") {
+      settings.autoreact = false;
 
-        await sock.sendMessage(jid, {
-          text: "🤖 Autoreact OFF ❌"
-        });
-      }
+      await sock.sendMessage(jid, {
+        text: "🤖 Autoreact OFF ❌"
+      });
+    }
 
-      if (command === ".autoreply on") {
-        settings.autoreply = true;
+    if (command === ".autoreply on") {
+      settings.autoreply = true;
 
-        await sock.sendMessage(jid, {
-          text: "💬 Autoreply ON ✅"
-        });
-      }
+      await sock.sendMessage(jid, {
+        text: "💬 Autoreply ON ✅"
+      });
+    }
 
-      if (command === ".autoreply off") {
-        settings.autoreply = false;
+    if (command === ".autoreply off") {
+      settings.autoreply = false;
 
-        await sock.sendMessage(jid, {
-          text: "💬 Autoreply OFF ❌"
-        });
-      }
+      await sock.sendMessage(jid, {
+        text: "💬 Autoreply OFF ❌"
+      });
+    }
 
-      if (command === ".antilink on") {
+    if (command === ".antilink on") {
+      settings.antilink = true;
+
+      await sock.sendMessage(jid, {
+        text: "🔗 Antilink ON ✅"
+      });
+    }
+
+    if (command === ".antilink off") {
+      settings.antilink = false;
+
+      await sock.sendMessage(jid, {
+        text: "🔗 Antilink OFF ❌"
+      });
+    }
+
+    if (command === ".antimentionstatus on") {
+      settings.antimentionstatus = true;
+
+      await sock.sendMessage(jid, {
+        text: "📢 AntiMentionStatus ON ✅"
+      });
+    }
+
+    if (command === ".antimentionstatus off") {
+      settings.antimentionstatus = false;
+
+      await sock.sendMessage(jid, {
+        text: "📢 AntiMentionStatus OFF ❌"
+      });
+    }
+
+    if (command === ".antibot on") {
+      settings.antibot = true;
+
+      await sock.sendMessage(jid, {
+        text: "🤖 Antibot ON ✅"
+      });
+    }
+
+    if (command === ".antibot off") {
+      settings.antibot = false;
+
+      await sock.sendMessage(jid, {
+        text: "🤖 Antibot OFF ❌"
+      });
+    }
+  });
+}
+
+startBot();
