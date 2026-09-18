@@ -1,7 +1,8 @@
 const {
   default: makeWASocket,
   useMultiFileAuthState,
-  DisconnectReason
+  DisconnectReason,
+  fetchLatestBaileysVersion
 } = require("@whiskeysockets/baileys");
 
 const pino = require("pino");
@@ -18,7 +19,7 @@ const PREFIX = ".";
 http.createServer((req, res) => {
   res.writeHead(200, { "Content-Type": "text/plain" });
   res.end("MATUPA DML BOT IS ONLINE");
-}).listen(PORT, () => {
+}).listen(PORT, "0.0.0.0", () => {
   console.log(`Server running on port ${PORT}`);
 });
 
@@ -26,11 +27,12 @@ http.createServer((req, res) => {
 
 const antiLink = new Set();
 const welcome = new Set();
-
 const cooldown = new Map();
 
+let reconnecting = false;
+
 function cleanNumber(jid) {
-  return jid?.split("@")[0]?.replace(/\D/g, "");
+  return jid?.split("@")[0]?.replace(/\D/g, "") || "";
 }
 
 function isOwner(jid) {
@@ -43,6 +45,7 @@ function isGroup(jid) {
 
 async function getAdmins(sock, jid) {
   const metadata = await sock.groupMetadata(jid);
+
   return metadata.participants
     .filter(p => p.admin)
     .map(p => p.id);
@@ -52,6 +55,7 @@ async function isAdmin(sock, jid, user) {
   if (!isGroup(jid)) return false;
 
   const admins = await getAdmins(sock, jid);
+
   return admins.includes(user);
 }
 
@@ -62,71 +66,215 @@ function hasLink(text) {
 // ================= BOT =================
 
 async function startBot() {
-  const { state, saveCreds } =
-    await useMultiFileAuthState("auth_info");
 
-  const sock = makeWASocket({
-    auth: state,
-    logger: pino({ level: "silent" }),
-    browser: ["Matupa DML Bot", "Chrome", "1.0.0"]
-  });
+  if (reconnecting) return;
 
-  sock.ev.on("creds.update", saveCreds);
+  reconnecting = true;
 
-  // PAIRING CODE
-  if (!state.creds.registered && PHONE_NUMBER) {
+  try {
+
+    const { state, saveCreds } =
+      await useMultiFileAuthState("auth_info");
+
+    let version;
+
     try {
-      const code = await sock.requestPairingCode(
-        PHONE_NUMBER.replace(/\D/g, "")
+      const latest = await fetchLatestBaileysVersion();
+      version = latest.version;
+
+      console.log(
+        "Using WhatsApp Web version:",
+        version.join(".")
       );
 
-      console.log("================================");
-      console.log("WHATSAPP PAIRING CODE:", code);
-      console.log("================================");
     } catch (error) {
-      console.log("Pairing error:", error.message);
-    }
-  }
-
-  // CONNECTION
-  sock.ev.on("connection.update", ({ connection, lastDisconnect }) => {
-    console.log("Connection:", connection);
-
-    if (connection === "open") {
-      console.log("================================");
-      console.log("✅ MATUPA DML BOT IMEUNGANISHWA!");
-      console.log("================================");
+      console.log(
+        "Could not fetch latest Baileys version, using default."
+      );
     }
 
-    if (connection === "close") {
-      const status =
-        lastDisconnect?.error?.output?.statusCode;
+    const sock = makeWASocket({
+      auth: state,
+      logger: pino({ level: "silent" }),
 
-      console.log("Connection imefungwa.");
+      ...(version ? { version } : {}),
 
-      if (status !== DisconnectReason.loggedOut) {
-        console.log("🔄 Reconnecting...");
-        setTimeout(startBot, 5000);
-      } else {
-        console.log("❌ WhatsApp session ime-logout.");
+      browser: [
+        "Matupa DML Bot",
+        "Chrome",
+        "1.0.0"
+      ],
+
+      printQRInTerminal: false,
+
+      markOnlineOnConnect: false,
+
+      generateHighQualityLinkPreview: false,
+
+      syncFullHistory: false
+    });
+
+    sock.ev.on("creds.update", saveCreds);
+
+    // ================= CONNECTION =================
+
+    sock.ev.on(
+      "connection.update",
+      async ({
+        connection,
+        lastDisconnect
+      }) => {
+
+        console.log("Connection:", connection);
+
+        if (connection === "connecting") {
+          console.log("🔄 Connecting to WhatsApp...");
+        }
+
+        if (connection === "open") {
+
+          reconnecting = false;
+
+          console.log("================================");
+          console.log("✅ MATUPA DML BOT IMEUNGANISHWA!");
+          console.log("================================");
+
+        }
+
+        if (connection === "close") {
+
+          reconnecting = false;
+
+          const status =
+            lastDisconnect?.error?.output?.statusCode;
+
+          console.log(
+            "Connection imefungwa."
+          );
+
+          console.log(
+            "Disconnect status:",
+            status
+          );
+
+          if (
+            status === DisconnectReason.loggedOut
+          ) {
+
+            console.log(
+              "❌ WhatsApp session ime-logout."
+            );
+
+            console.log(
+              "⚠️ Delete auth_info and pair again."
+            );
+
+            return;
+          }
+
+          console.log(
+            "🔄 WhatsApp imekatika. Reconnecting in 5 seconds..."
+          );
+
+          setTimeout(() => {
+
+            startBot().catch(error => {
+              console.log(
+                "Reconnect error:",
+                error.message
+              );
+            });
+
+          }, 5000);
+        }
       }
+    );
+
+    // ================= PAIRING =================
+
+    if (
+      !state.creds.registered &&
+      PHONE_NUMBER
+    ) {
+
+      console.log(
+        "Waiting before requesting pairing code..."
+      );
+
+      setTimeout(async () => {
+
+        try {
+
+          const phone =
+            PHONE_NUMBER.replace(/\D/g, "");
+
+          console.log(
+            "Requesting WhatsApp pairing code..."
+          );
+
+          const code =
+            await sock.requestPairingCode(phone);
+
+          console.log("================================");
+          console.log(
+            "WHATSAPP PAIRING CODE:",
+            code
+          );
+          console.log("================================");
+          console.log(
+            "Enter this code in WhatsApp > Linked devices."
+          );
+
+        } catch (error) {
+
+          console.log(
+            "Pairing error:",
+            error.message
+          );
+
+        }
+
+      }, 8000);
+
+    } else if (!PHONE_NUMBER) {
+
+      console.log(
+        "⚠️ PHONE_NUMBER haijawekwa kwenye Render Environment Variables."
+      );
+
+    } else {
+
+      console.log(
+        "Existing WhatsApp session found."
+      );
+
     }
-  });
 
-  // ================= GROUP EVENTS =================
+    // ================= GROUP EVENTS =================
 
-  sock.ev.on("group-participants.update", async (update) => {
-    try {
-      const { id, participants, action } = update;
+    sock.ev.on(
+      "group-participants.update",
+      async (update) => {
 
-      if (!welcome.has(id)) return;
+        try {
 
-      for (const user of participants) {
-        const number = cleanNumber(user);
+          const {
+            id,
+            participants,
+            action
+          } = update;
 
-        if (action === "add") {
-          await sock.sendMessage(id, {
-            text:
+          if (!welcome.has(id)) return;
+
+          for (const user of participants) {
+
+            const number =
+              cleanNumber(user);
+
+            if (action === "add") {
+
+              await sock.sendMessage(id, {
+                text:
 `👋 KARIBU kwenye group!
 
 @${number}
@@ -134,108 +282,196 @@ async function startBot() {
 🤖 Mimi ni MATUPA DML BOT.
 
 Andika *.menu* kuona commands.`,
-            mentions: [user]
-          });
+                mentions: [user]
+              });
+
+            }
+
+            if (action === "remove") {
+
+              await sock.sendMessage(id, {
+                text:
+`👋 @${number} ametoka kwenye group.`,
+                mentions: [user]
+              });
+
+            }
+
+          }
+
+        } catch (error) {
+
+          console.log(
+            "Group event error:",
+            error.message
+          );
+
         }
 
-        if (action === "remove") {
-          await sock.sendMessage(id, {
-            text: `👋 @${number} ametoka kwenye group.`,
-            mentions: [user]
-          });
-        }
       }
-    } catch (error) {
-      console.log("Group event error:", error.message);
-    }
-  });
+    );
 
-  // ================= MESSAGES =================
+    // ================= MESSAGES =================
 
-  sock.ev.on("messages.upsert", async ({ messages }) => {
-    try {
-      const msg = messages[0];
+    sock.ev.on(
+      "messages.upsert",
+      async ({ messages }) => {
 
-      if (!msg?.message) return;
-      if (msg.key.fromMe) return;
+        try {
 
-      const jid = msg.key.remoteJid;
+          const msg = messages[0];
 
-      if (!jid) return;
+          if (!msg?.message) return;
 
-      const sender = msg.key.participant || jid;
+          if (msg.key.fromMe) return;
 
-      const text =
-        msg.message.conversation ||
-        msg.message.extendedTextMessage?.text ||
-        msg.message.imageMessage?.caption ||
-        msg.message.videoMessage?.caption ||
-        "";
+          const jid =
+            msg.key.remoteJid;
 
-      const body = text.trim();
+          if (!jid) return;
 
-      if (!body) return;
+          const sender =
+            msg.key.participant || jid;
 
-      // ================= ANTI LINK =================
+          const text =
+            msg.message.conversation ||
+            msg.message.extendedTextMessage?.text ||
+            msg.message.imageMessage?.caption ||
+            msg.message.videoMessage?.caption ||
+            "";
 
-      if (
-        isGroup(jid) &&
-        antiLink.has(jid) &&
-        hasLink(body)
-      ) {
-        const admin = await isAdmin(sock, jid, sender);
+          const body =
+            text.trim();
 
-        if (!admin && !isOwner(sender)) {
-          try {
-            await sock.sendMessage(jid, {
-              delete: msg.key
-            });
+          if (!body) return;
 
-            await sock.sendMessage(jid, {
-              text:
+          // ================= ANTI LINK =================
+
+          if (
+            isGroup(jid) &&
+            antiLink.has(jid) &&
+            hasLink(body)
+          ) {
+
+            const admin =
+              await isAdmin(
+                sock,
+                jid,
+                sender
+              );
+
+            if (
+              !admin &&
+              !isOwner(sender)
+            ) {
+
+              try {
+
+                await sock.sendMessage(
+                  jid,
+                  {
+                    delete: msg.key
+                  }
+                );
+
+                await sock.sendMessage(
+                  jid,
+                  {
+                    text:
 `🚫 LINK IMEZUIWA!
 
 @${cleanNumber(sender)}
 
 Anti-link iko ON.`,
-              mentions: [sender]
-            });
-          } catch (error) {
-            console.log("Anti-link error:", error.message);
+                    mentions: [sender]
+                  }
+                );
+
+              } catch (error) {
+
+                console.log(
+                  "Anti-link error:",
+                  error.message
+                );
+
+              }
+
+              return;
+            }
           }
 
-          return;
-        }
-      }
+          // ================= AUTO REPLY =================
 
-      // ================= COMMAND =================
+          const lower =
+            body.toLowerCase();
 
-      if (!body.startsWith(PREFIX)) return;
+          if (
+            lower === "hello" ||
+            lower === "habari" ||
+            lower === "hi"
+          ) {
 
-      const args = body.slice(PREFIX.length).trim().split(/\s+/);
-      const command = args.shift()?.toLowerCase();
+            await sock.sendMessage(
+              jid,
+              {
+                text:
+`Habari 👋
 
-      if (!command) return;
+🤖 Mimi ni Matupa DML Bot.
+Andika *.menu* kuona commands.`
+              }
+            );
 
-      // ================= COOLDOWN =================
+            return;
+          }
 
-      const now = Date.now();
-      const last = cooldown.get(sender) || 0;
+          // ================= COMMAND =================
 
-      if (
-        now - last < 1500 &&
-        !isOwner(sender)
-      ) {
-        return;
-      }
+          if (
+            !body.startsWith(PREFIX)
+          ) return;
 
-      cooldown.set(sender, now);
+          const args =
+            body
+              .slice(PREFIX.length)
+              .trim()
+              .split(/\s+/);
 
-      // ================= MENU =================
+          const command =
+            args
+              .shift()
+              ?.toLowerCase();
 
-      if (command === "menu") {
-        await sock.sendMessage(jid, {
-          text:
+          if (!command) return;
+
+          // ================= COOLDOWN =================
+
+          const now =
+            Date.now();
+
+          const last =
+            cooldown.get(sender) || 0;
+
+          if (
+            now - last < 1500 &&
+            !isOwner(sender)
+          ) {
+            return;
+          }
+
+          cooldown.set(
+            sender,
+            now
+          );
+
+          // ================= MENU =================
+
+          if (command === "menu") {
+
+            await sock.sendMessage(
+              jid,
+              {
+                text:
 `╭━━━〔 🤖 MATUPA DML BOT 〕━━━╮
 ┃
 ┃ 👋 Karibu!
@@ -266,16 +502,20 @@ Anti-link iko ON.`,
 ┃ • .instagram <link>
 ┃
 ╰━━━━━━━━━━━━━━━━━━━━━━╯`
-        });
+              }
+            );
 
-        return;
-      }
+            return;
+          }
 
-      // ================= HELP =================
+          // ================= HELP =================
 
-      if (command === "help") {
-        await sock.sendMessage(jid, {
-          text:
+          if (command === "help") {
+
+            await sock.sendMessage(
+              jid,
+              {
+                text:
 `📚 MATUPA DML BOT HELP
 
 Tumia .menu kuona commands zote.
@@ -285,336 +525,559 @@ Mfano:
 .antilink on
 .welcome on
 .tagall`
-        });
+              }
+            );
 
-        return;
-      }
+            return;
+          }
 
-      // ================= PING =================
+          // ================= PING =================
 
-      if (command === "ping") {
-        await sock.sendMessage(jid, {
-          text: "🏓 PONG!\n\n✅ Matupa DML Bot iko online."
-        });
+          if (command === "ping") {
 
-        return;
-      }
+            await sock.sendMessage(
+              jid,
+              {
+                text:
+"🏓 PONG!\n\n✅ Matupa DML Bot iko online."
+              }
+            );
 
-      // ================= OWNER =================
+            return;
+          }
 
-      if (command === "owner") {
-        await sock.sendMessage(jid, {
-          text:
+          // ================= OWNER =================
+
+          if (command === "owner") {
+
+            await sock.sendMessage(
+              jid,
+              {
+                text:
 `👑 MATUPA DML BOT
 
 Owner:
 +${OWNER_NUMBER.replace(/\D/g, "")}`
-        });
+              }
+            );
 
-        return;
-      }
+            return;
+          }
 
-      // ================= GROUP CHECK =================
+          // ================= GROUP CHECK =================
 
-      const groupCommands = [
-        "antilink",
-        "welcome",
-        "tagall",
-        "admins",
-        "kick",
-        "promote",
-        "demote",
-        "add"
-      ];
+          const groupCommands = [
+            "antilink",
+            "welcome",
+            "tagall",
+            "admins",
+            "kick",
+            "promote",
+            "demote",
+            "add"
+          ];
 
-      if (
-        groupCommands.includes(command) &&
-        !isGroup(jid)
-      ) {
-        await sock.sendMessage(jid, {
-          text: "❌ Command hii inafanya kazi kwenye group tu."
-        });
+          if (
+            groupCommands.includes(command) &&
+            !isGroup(jid)
+          ) {
 
-        return;
-      }
+            await sock.sendMessage(
+              jid,
+              {
+                text:
+"❌ Command hii inafanya kazi kwenye group tu."
+              }
+            );
 
-      // ================= ANTI LINK =================
+            return;
+          }
 
-      if (command === "antilink") {
-        const admin = await isAdmin(sock, jid, sender);
+          // ================= ANTI LINK =================
 
-        if (!admin && !isOwner(sender)) {
-          await sock.sendMessage(jid, {
-            text: "❌ Admin pekee anaweza kutumia command hii."
-          });
-          return;
-        }
+          if (command === "antilink") {
 
-        const option = args[0]?.toLowerCase();
+            const admin =
+              await isAdmin(
+                sock,
+                jid,
+                sender
+              );
 
-        if (option === "on") {
-          antiLink.add(jid);
+            if (
+              !admin &&
+              !isOwner(sender)
+            ) {
 
-          await sock.sendMessage(jid, {
-            text: "✅ Anti-link imewashwa."
-          });
-        }
+              await sock.sendMessage(
+                jid,
+                {
+                  text:
+"❌ Admin pekee anaweza kutumia command hii."
+                }
+              );
 
-        else if (option === "off") {
-          antiLink.delete(jid);
+              return;
+            }
 
-          await sock.sendMessage(jid, {
-            text: "✅ Anti-link imezimwa."
-          });
-        }
+            const option =
+              args[0]?.toLowerCase();
 
-        else {
-          await sock.sendMessage(jid, {
-            text: "Tumia:\n.antilink on\n.antilink off"
-          });
-        }
+            if (option === "on") {
 
-        return;
-      }
+              antiLink.add(jid);
 
-      // ================= WELCOME =================
+              await sock.sendMessage(
+                jid,
+                {
+                  text:
+"✅ Anti-link imewashwa."
+                }
+              );
 
-      if (command === "welcome") {
-        const admin = await isAdmin(sock, jid, sender);
+            } else if (
+              option === "off"
+            ) {
 
-        if (!admin && !isOwner(sender)) {
-          await sock.sendMessage(jid, {
-            text: "❌ Admin pekee anaweza kutumia command hii."
-          });
-          return;
-        }
+              antiLink.delete(jid);
 
-        const option = args[0]?.toLowerCase();
+              await sock.sendMessage(
+                jid,
+                {
+                  text:
+"✅ Anti-link imezimwa."
+                }
+              );
 
-        if (option === "on") {
-          welcome.add(jid);
+            } else {
 
-          await sock.sendMessage(jid, {
-            text: "✅ Welcome/Farewell imewashwa."
-          });
-        }
+              await sock.sendMessage(
+                jid,
+                {
+                  text:
+"Tumia:\n.antilink on\n.antilink off"
+                }
+              );
 
-        else if (option === "off") {
-          welcome.delete(jid);
+            }
 
-          await sock.sendMessage(jid, {
-            text: "✅ Welcome/Farewell imezimwa."
-          });
-        }
+            return;
+          }
 
-        else {
-          await sock.sendMessage(jid, {
-            text: "Tumia:\n.welcome on\n.welcome off"
-          });
-        }
+          // ================= WELCOME =================
 
-        return;
-      }
+          if (command === "welcome") {
 
-      // ================= ADMINS =================
+            const admin =
+              await isAdmin(
+                sock,
+                jid,
+                sender
+              );
 
-      if (command === "admins") {
-        const metadata = await sock.groupMetadata(jid);
+            if (
+              !admin &&
+              !isOwner(sender)
+            ) {
 
-        const admins = metadata.participants
-          .filter(p => p.admin)
-          .map(p => `@${cleanNumber(p.id)}`);
+              await sock.sendMessage(
+                jid,
+                {
+                  text:
+"❌ Admin pekee anaweza kutumia command hii."
+                }
+              );
 
-        await sock.sendMessage(jid, {
-          text:
+              return;
+            }
+
+            const option =
+              args[0]?.toLowerCase();
+
+            if (option === "on") {
+
+              welcome.add(jid);
+
+              await sock.sendMessage(
+                jid,
+                {
+                  text:
+"✅ Welcome/Farewell imewashwa."
+                }
+              );
+
+            } else if (
+              option === "off"
+            ) {
+
+              welcome.delete(jid);
+
+              await sock.sendMessage(
+                jid,
+                {
+                  text:
+"✅ Welcome/Farewell imezimwa."
+                }
+              );
+
+            } else {
+
+              await sock.sendMessage(
+                jid,
+                {
+                  text:
+"Tumia:\n.welcome on\n.welcome off"
+                }
+              );
+
+            }
+
+            return;
+          }
+
+          // ================= ADMINS =================
+
+          if (command === "admins") {
+
+            const metadata =
+              await sock.groupMetadata(jid);
+
+            const adminParticipants =
+              metadata.participants
+                .filter(p => p.admin);
+
+            const admins =
+              adminParticipants
+                .map(
+                  p =>
+                    `@${cleanNumber(p.id)}`
+                );
+
+            await sock.sendMessage(
+              jid,
+              {
+                text:
 `👑 GROUP ADMINS
 
 ${admins.join("\n")}`,
-          mentions: metadata.participants
-            .filter(p => p.admin)
-            .map(p => p.id)
-        });
 
-        return;
-      }
+                mentions:
+                  adminParticipants
+                    .map(p => p.id)
+              }
+            );
 
-      // ================= TAG ALL =================
+            return;
+          }
 
-      if (command === "tagall") {
-        const admin = await isAdmin(sock, jid, sender);
+          // ================= TAG ALL =================
 
-        if (!admin && !isOwner(sender)) {
-          await sock.sendMessage(jid, {
-            text: "❌ Admin pekee anaweza kutumia command hii."
-          });
-          return;
-        }
+          if (command === "tagall") {
 
-        const metadata = await sock.groupMetadata(jid);
+            const admin =
+              await isAdmin(
+                sock,
+                jid,
+                sender
+              );
 
-        const members = metadata.participants;
+            if (
+              !admin &&
+              !isOwner(sender)
+            ) {
 
-        let message = "📢 MATUPA DML TAG ALL\n\n";
+              await sock.sendMessage(
+                jid,
+                {
+                  text:
+"❌ Admin pekee anaweza kutumia command hii."
+                }
+              );
 
-        for (const member of members) {
-          message += `@${cleanNumber(member.id)} `;
-        }
+              return;
+            }
 
-        await sock.sendMessage(jid, {
-          text: message,
-          mentions: members.map(m => m.id)
-        });
+            const metadata =
+              await sock.groupMetadata(jid);
 
-        return;
-      }
+            const members =
+              metadata.participants;
 
-      // ================= TARGET =================
+            let message =
+              "📢 MATUPA DML TAG ALL\n\n";
 
-      const mentioned =
-        msg.message.extendedTextMessage?.contextInfo?.mentionedJid || [];
+            for (
+              const member of members
+            ) {
 
-      const target =
-        mentioned[0] ||
-        msg.message.extendedTextMessage?.contextInfo?.participant;
+              message +=
+                `@${cleanNumber(member.id)} `;
 
-      // ================= KICK =================
+            }
 
-      if (command === "kick") {
-        const admin = await isAdmin(sock, jid, sender);
+            await sock.sendMessage(
+              jid,
+              {
+                text: message,
+                mentions:
+                  members.map(
+                    m => m.id
+                  )
+              }
+            );
 
-        if (!admin && !isOwner(sender)) {
-          await sock.sendMessage(jid, {
-            text: "❌ Admin pekee anaweza kutumia command hii."
-          });
-          return;
-        }
+            return;
+          }
 
-        if (!target) {
-          await sock.sendMessage(jid, {
-            text: "❌ Mention user.\nMfano: .kick @user"
-          });
-          return;
-        }
+          // ================= TARGET =================
 
-        await sock.groupParticipantsUpdate(
-          jid,
-          [target],
-          "remove"
-        );
+          const mentioned =
+            msg.message
+              .extendedTextMessage
+              ?.contextInfo
+              ?.mentionedJid || [];
 
-        return;
-      }
+          const target =
+            mentioned[0] ||
+            msg.message
+              .extendedTextMessage
+              ?.contextInfo
+              ?.participant;
 
-      // ================= PROMOTE =================
+          // ================= KICK =================
 
-      if (command === "promote") {
-        const admin = await isAdmin(sock, jid, sender);
+          if (command === "kick") {
 
-        if (!admin && !isOwner(sender)) {
-          await sock.sendMessage(jid, {
-            text: "❌ Admin pekee."
-          });
-          return;
-        }
+            const admin =
+              await isAdmin(
+                sock,
+                jid,
+                sender
+              );
 
-        if (!target) {
-          await sock.sendMessage(jid, {
-            text: "❌ Mention user."
-          });
-          return;
-        }
+            if (
+              !admin &&
+              !isOwner(sender)
+            ) {
 
-        await sock.groupParticipantsUpdate(
-          jid,
-          [target],
-          "promote"
-        );
+              await sock.sendMessage(
+                jid,
+                {
+                  text:
+"❌ Admin pekee anaweza kutumia command hii."
+                }
+              );
 
-        return;
-      }
+              return;
+            }
 
-      // ================= DEMOTE =================
+            if (!target) {
 
-      if (command === "demote") {
-        const admin = await isAdmin(sock, jid, sender);
+              await sock.sendMessage(
+                jid,
+                {
+                  text:
+"❌ Mention user.\nMfano: .kick @user"
+                }
+              );
 
-        if (!admin && !isOwner(sender)) {
-          await sock.sendMessage(jid, {
-            text: "❌ Admin pekee."
-          });
-          return;
-        }
+              return;
+            }
 
-        if (!target) {
-          await sock.sendMessage(jid, {
-            text: "❌ Mention user."
-          });
-          return;
-        }
+            await sock.groupParticipantsUpdate(
+              jid,
+              [target],
+              "remove"
+            );
 
-        await sock.groupParticipantsUpdate(
-          jid,
-          [target],
-          "demote"
-        );
+            return;
+          }
 
-        return;
-      }
+          // ================= PROMOTE =================
 
-      // ================= ADD =================
+          if (command === "promote") {
 
-      if (command === "add") {
-        const admin = await isAdmin(sock, jid, sender);
+            const admin =
+              await isAdmin(
+                sock,
+                jid,
+                sender
+              );
 
-        if (!admin && !isOwner(sender)) {
-          await sock.sendMessage(jid, {
-            text: "❌ Admin pekee."
-          });
-          return;
-        }
+            if (
+              !admin &&
+              !isOwner(sender)
+            ) {
 
-        const number = args[0]?.replace(/\D/g, "");
+              await sock.sendMessage(
+                jid,
+                {
+                  text:
+"❌ Admin pekee."
+                }
+              );
 
-        if (!number) {
-          await sock.sendMessage(jid, {
-            text: "Mfano:\n.add 255639000000"
-          });
-          return;
-        }
+              return;
+            }
 
-        await sock.groupParticipantsUpdate(
-          jid,
-          [`${number}@s.whatsapp.net`],
-          "add"
-        );
+            if (!target) {
 
-        return;
-      }
+              await sock.sendMessage(
+                jid,
+                {
+                  text:
+"❌ Mention user."
+                }
+              );
 
-      // ================= DOWNLOADERS =================
+              return;
+            }
 
-      if (
-        command === "yt" ||
-        command === "tiktok" ||
-        command === "instagram"
-      ) {
-        const link = args[0];
+            await sock.groupParticipantsUpdate(
+              jid,
+              [target],
+              "promote"
+            );
 
-        if (!link) {
-          await sock.sendMessage(jid, {
-            text:
+            return;
+          }
+
+          // ================= DEMOTE =================
+
+          if (command === "demote") {
+
+            const admin =
+              await isAdmin(
+                sock,
+                jid,
+                sender
+              );
+
+            if (
+              !admin &&
+              !isOwner(sender)
+            ) {
+
+              await sock.sendMessage(
+                jid,
+                {
+                  text:
+"❌ Admin pekee."
+                }
+              );
+
+              return;
+            }
+
+            if (!target) {
+
+              await sock.sendMessage(
+                jid,
+                {
+                  text:
+"❌ Mention user."
+                }
+              );
+
+              return;
+            }
+
+            await sock.groupParticipantsUpdate(
+              jid,
+              [target],
+              "demote"
+            );
+
+            return;
+          }
+
+          // ================= ADD =================
+
+          if (command === "add") {
+
+            const admin =
+              await isAdmin(
+                sock,
+                jid,
+                sender
+              );
+
+            if (
+              !admin &&
+              !isOwner(sender)
+            ) {
+
+              await sock.sendMessage(
+                jid,
+                {
+                  text:
+"❌ Admin pekee."
+                }
+              );
+
+              return;
+            }
+
+            const number =
+              args[0]?.replace(
+                /\D/g,
+                ""
+              );
+
+            if (!number) {
+
+              await sock.sendMessage(
+                jid,
+                {
+                  text:
+"Mfano:\n.add 255639000000"
+                }
+              );
+
+              return;
+            }
+
+            await sock.groupParticipantsUpdate(
+              jid,
+              [`${number}@s.whatsapp.net`],
+              "add"
+            );
+
+            return;
+          }
+
+          // ================= DOWNLOADERS =================
+
+          if (
+            command === "yt" ||
+            command === "tiktok" ||
+            command === "instagram"
+          ) {
+
+            const link =
+              args[0];
+
+            if (!link) {
+
+              await sock.sendMessage(
+                jid,
+                {
+                  text:
 `📥 Tumia:
 .${command} <link>
 
 Mfano:
 .${command} https://example.com/video`
-          });
+                }
+              );
 
-          return;
-        }
+              return;
+            }
 
-        await sock.sendMessage(jid, {
-          text:
+            await sock.sendMessage(
+              jid,
+              {
+                text:
 `📥 ${command.toUpperCase()} DOWNLOADER
 
 Link imepokelewa ✅
@@ -622,33 +1085,46 @@ Link imepokelewa ✅
 Downloader provider bado haijawekwa kwenye bot.
 
 Tutaiunganisha na API/provider halali bila kuweka API key kwenye GitHub.`
-        });
+              }
+            );
 
-        return;
+            return;
+          }
+
+        } catch (error) {
+
+          console.log(
+            "Message error:",
+            error.message
+          );
+
+        }
+
       }
+    );
 
-      // ================= AUTO REPLY =================
+  } catch (error) {
 
-      const lower = body.toLowerCase();
+    reconnecting = false;
 
-      if (
-        lower === "hello" ||
-        lower === "habari" ||
-        lower === "hi"
-      ) {
-        await sock.sendMessage(jid, {
-          text: "Habari 👋\n\n🤖 Mimi ni Matupa DML Bot.\nAndika *.menu* kuona commands."
-        });
+    console.error(
+      "BOT START ERROR:",
+      error.message
+    );
 
-        return;
-      }
-
-    } catch (error) {
-      console.log("Message error:", error.message);
-    }
-  });
+    setTimeout(() => {
+      startBot().catch(console.error);
+    }, 5000);
+  }
 }
 
+// ================= START =================
+
 startBot().catch(error => {
-  console.error("BOT START ERROR:", error);
+  console.error(
+    "BOT START ERROR:",
+    error
+  );
 });
+
+
