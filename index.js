@@ -1126,5 +1126,3 @@ startBot().catch(error => {
     error
   );
 });
-
-
